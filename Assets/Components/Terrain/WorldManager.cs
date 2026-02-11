@@ -88,7 +88,8 @@ namespace Antymology.Terrain
         /// </summary>
         private void GenerateAnts()
         {
-            throw new NotImplementedException();
+            // throw new NotImplementedException();
+            Debug.Log("Ants generation skipped for now.");
         }
 
         #endregion
