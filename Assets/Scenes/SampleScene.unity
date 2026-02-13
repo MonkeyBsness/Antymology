@@ -439,7 +439,7 @@ MonoBehaviour:
   AntPrefab: {fileID: 2085152731265447959, guid: 1943dbb7084cae44da8b2be0bf59b755,
     type: 3}
   PopulationSize: 20
-  TimeScale: 1
+  TimeScale: 10
   MaxTicksPerGeneration: 1000
 --- !u!4 &1111905425
 Transform:

@@ -9,7 +9,7 @@ namespace Antymology.Agents
     {
         public GameObject AntPrefab;
         public int PopulationSize = 20;
-        public float TimeScale = 1.0f;
+        public float TimeScale = 10.0f;
         public int MaxTicksPerGeneration = 1000;
 
         private List<Ant> _ants = new List<Ant>();
@@ -19,6 +19,8 @@ namespace Antymology.Agents
         
         // Evolution State
         private List<float[]> _parentGenomes = new List<float[]>();
+        private int _bestFitnessSoFar = -1;
+        private float[] _currentTestedGenome;
 
         void Start()
         {
@@ -51,6 +53,18 @@ namespace Antymology.Agents
         {
             _currentTick = 0;
             _nestsBuiltThisGen = 0;
+
+            if (_parentGenomes.Count > 0)
+            {
+                // EVOLUTION: Take the best parent and mutate it to try and find an improvement.
+                float[] parent = _parentGenomes[0]; 
+                _currentTestedGenome = Mutate(parent);
+            }
+            else
+            {
+                // INITIALIZATION: First generation gets random weights.
+                _currentTestedGenome = new float[] { Random.value, Random.value, Random.value, Random.value };
+            }
             
             for (int i = 0; i < PopulationSize; i++)
             {
@@ -63,21 +77,21 @@ namespace Antymology.Agents
                 int y = FindSurfaceY(x, z) + 1;
                 antObj.transform.position = new Vector3(x, y, z);
 
-                // If we have parents (Gen > 1), mutate them. Otherwise random.
-                float[] genes;
-                if (_parentGenomes.Count > 0)
-                {
-                    float[] parent = _parentGenomes[Random.Range(0, _parentGenomes.Count)];
-                    genes = Mutate(parent);
-                }
-                else
-                {
-                    genes = new float[] { Random.value, Random.value, Random.value, Random.value };
-                }
+                // // If we have parents (Gen > 1), mutate them. Otherwise random.
+                // float[] genes;
+                // if (_parentGenomes.Count > 0)
+                // {
+                //     float[] parent = _parentGenomes[Random.Range(0, _parentGenomes.Count)];
+                //     genes = Mutate(parent);
+                // }
+                // else
+                // {
+                //     genes = new float[] { Random.value, Random.value, Random.value, Random.value };
+                // }
 
                 // 1 Queen, rest workers
                 bool isQueen = (i == 0); 
-                ant.Init(isQueen, genes);
+                ant.Init(isQueen, _currentTestedGenome);
                 _ants.Add(ant);
             }
             Debug.Log($"Generation {_generationCount} Started.");
@@ -88,6 +102,23 @@ namespace Antymology.Agents
             // Calculate Fitness
 
             Debug.Log($"Generation {_generationCount} Ended. Fitness: {_nestsBuiltThisGen}");
+
+            if (_nestsBuiltThisGen >= _bestFitnessSoFar)
+            {
+                _bestFitnessSoFar = _nestsBuiltThisGen;
+                
+                // Save this genome as the new parent
+                _parentGenomes.Clear();
+                _parentGenomes.Add(_currentTestedGenome);
+                
+                Debug.Log($"<color=green>NEW RECORD! Saved Genome.</color>");
+            }
+            else
+            {
+                Debug.Log($"<color=red>Genome Failed. Reverting to previous best.</color>");
+                // We do nothing to _parentGenomes. 
+                // Next SpawnGeneration will grab the OLD best genome and try a DIFFERENT mutation.
+            }
 
 
             foreach(var ant in _ants) if(ant != null) Destroy(ant.gameObject);
@@ -102,7 +133,7 @@ namespace Antymology.Agents
         {
             float[] child = (float[])parent.Clone();
             int geneToMutate = Random.Range(0, child.Length);
-            child[geneToMutate] += Random.Range(-0.1f, 0.1f); // Small mutation
+            child[geneToMutate] += Random.Range(-0.2f, 0.2f); // Small mutation
             return child;
         }
 

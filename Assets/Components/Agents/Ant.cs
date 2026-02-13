@@ -66,7 +66,7 @@ namespace Antymology.Agents
             // 2: Standing on Container?
             // 3: Random Noise
             float[] inputs = new float[] {
-                CurrentHealth < 30 ? 1f : 0f,
+                CurrentHealth < 50 ? 1f : 0f,
                 GetBlockAt(_currentPos + Vector3.down) is MulchBlock ? 1f : 0f,
                 GetBlockAt(_currentPos + Vector3.down) is ContainerBlock ? 1f : 0f,
                 Random.value
@@ -77,7 +77,7 @@ namespace Antymology.Agents
             float moveDesire = inputs[3] * Genome[0]; 
             float eatDesire = inputs[1] * inputs[0] * Genome[1]; // Desire to eat rises if health is low and food is present
             float digDesire = inputs[2] * Genome[2];
-            float buildDesire = IsQueen ? inputs[3] * Genome[3] : -1f;
+            float buildDesire = (IsQueen && CurrentHealth >= BUILD_COST) ? inputs[3] * Genome[3] : -1f;
 
             // Select highest desire
             float max = Mathf.Max(moveDesire, eatDesire, digDesire, buildDesire);
