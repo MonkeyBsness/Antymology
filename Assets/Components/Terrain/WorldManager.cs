@@ -96,6 +96,7 @@ namespace Antymology.Terrain
 
         #region Methods
 
+
         /// <summary>
         /// Retrieves an abstract block type at the desired world coordinates.
         /// </summary>
