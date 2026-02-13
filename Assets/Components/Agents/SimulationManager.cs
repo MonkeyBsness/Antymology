@@ -154,5 +154,19 @@ namespace Antymology.Agents
                 if(!(WorldManager.Instance.GetBlock(x, y, z) is AirBlock)) return y;
             return 0;
         }
+
+        
+        public Ant GetAntAt(Vector3 position)
+        {
+            // Simple check: Is there an ant at these exact coordinates?
+            foreach (var ant in _ants)
+            {
+                if (ant != null && Vector3.Distance(ant.transform.position, position) < 0.5f)
+                {
+                    return ant;
+                }
+            }
+            return null;
+        }
     }
 }

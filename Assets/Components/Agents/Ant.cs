@@ -12,6 +12,8 @@ namespace Antymology.Agents
         private const float ACID_MULTIPLIER = 2.0f;
         private const float HEAL_AMOUNT = 30f;
         private const float BUILD_COST = 30f;
+        private const byte PHEROMONE_QUEEN = 2; 
+        private const float HEALTH_TRANSFER_AMOUNT = 10f;
         #endregion
 
         #region State
@@ -37,6 +39,16 @@ namespace Antymology.Agents
         public void OnTick()
         {
             if (CurrentHealth <= 0) return;
+
+            if (IsQueen)
+            {
+                BroadcastQueenScent();
+            }
+
+            if (!IsQueen)
+            {
+                TryHealQueen();
+            }
 
             // Environmental Effects & Health Decay
             ApplyHealthDecay();
@@ -65,11 +77,21 @@ namespace Antymology.Agents
             // 1: Standing on Mulch?
             // 2: Standing on Container?
             // 3: Random Noise
+
+            float queenSmell = 0f;
+            AirBlock currentAir = GetAirBlock(_currentPos);
+            if (currentAir != null)
+            {
+                 // Check neighbors for max scent to see if we are "near" the trail
+                 queenSmell = (float)currentAir.GetPheromone(PHEROMONE_QUEEN);
+            }
+
             float[] inputs = new float[] {
                 CurrentHealth < 50 ? 1f : 0f,
                 GetBlockAt(_currentPos + Vector3.down) is MulchBlock ? 1f : 0f,
                 GetBlockAt(_currentPos + Vector3.down) is ContainerBlock ? 1f : 0f,
-                Random.value
+                Random.value,
+                queenSmell > 0 ? 1f : 0f
             };
 
             // Calculate desire for each action based on Genome weights
@@ -79,12 +101,17 @@ namespace Antymology.Agents
             float digDesire = inputs[2] * Genome[2];
             float buildDesire = (IsQueen && CurrentHealth >= BUILD_COST) ? inputs[3] * Genome[3] : -1f;
 
+            float seekQueenDesire = (!IsQueen) ? inputs[4] * Genome[4] : -1f;
+            
             // Select highest desire
-            float max = Mathf.Max(moveDesire, eatDesire, digDesire, buildDesire);
+            float max = Mathf.Max(moveDesire, eatDesire, digDesire, buildDesire, seekQueenDesire);
+
+
 
             if (max == eatDesire) TryEat();
             else if (max == buildDesire) TryBuildNest();
             else if (max == digDesire) TryDig();
+            else if (max == seekQueenDesire) TryMoveTowardsQueen(); 
             else TryMove(); // Default to moving
         }
 
@@ -152,10 +179,87 @@ namespace Antymology.Agents
             }
         }
 
+        private void TryMoveTowardsQueen()
+        {
+            Vector3 bestMove = _currentPos;
+            double maxScent = -1.0;
+
+            Vector3[] directions = { Vector3.forward, Vector3.back, Vector3.left, Vector3.right };
+            
+            foreach (var dir in directions)
+            {
+                Vector3 target = _currentPos + dir;
+                int surfaceY = FindSurfaceY((int)target.x, (int)target.z);
+
+                if (Mathf.Abs(surfaceY - _currentPos.y) <= 2)
+                {
+                    Vector3 potentialPos = new Vector3(target.x, surfaceY + 1, target.z);
+                    AirBlock air = GetAirBlock(potentialPos);
+                    
+                    if (air != null)
+                    {
+                        double scent = air.GetPheromone(PHEROMONE_QUEEN);
+                        if (scent > maxScent)
+                        {
+                            maxScent = scent;
+                            bestMove = potentialPos;
+                        }
+                    }
+                }
+            }
+
+            // Move to the strongest scent
+            if (maxScent > 0)
+            {
+                transform.position = bestMove;
+                _currentPos = bestMove;
+            }
+            else
+            {
+                // If we lost the trail, move randomly
+                TryMove();
+            }
+        }
+
         private void Die()
         {
             SimulationManager.Instance.RemoveAnt(this);
             Destroy(gameObject);
+        }
+
+        private void BroadcastQueenScent()
+        {
+            // Deposit strong scent at current location
+            AirBlock current = GetAirBlock(_currentPos);
+            if (current != null) current.DepositPheromone(PHEROMONE_QUEEN, 100.0);
+
+            // Deposit weaker scent in neighbors to create a gradient
+            // This helps workers find the queen even if they aren't on the exact same block
+            Vector3[] offsets = { Vector3.forward, Vector3.back, Vector3.left, Vector3.right };
+            foreach (var offset in offsets)
+            {
+                AirBlock neighbor = GetAirBlock(_currentPos + offset);
+                if (neighbor != null) neighbor.DepositPheromone(PHEROMONE_QUEEN, 50.0);
+            }
+        }
+
+        private void TryHealQueen()
+        {
+            // Check if there is an ant at my position
+            Ant otherAnt = SimulationManager.Instance.GetAntAt(_currentPos);
+
+            // If found, and it is the Queen, and I have health to spare
+            if (otherAnt != null && otherAnt.IsQueen && CurrentHealth > HEALTH_TRANSFER_AMOUNT)
+            {
+                CurrentHealth -= HEALTH_TRANSFER_AMOUNT;
+                otherAnt.ReceiveHealth(HEALTH_TRANSFER_AMOUNT);
+            }
+        }
+
+        public void ReceiveHealth(float amount)
+        {
+            CurrentHealth += amount;
+            // Cap at Max Health if desired, though PDF didn't specify a hard cap for Queen
         }
 
         #endregion
@@ -176,6 +280,12 @@ namespace Antymology.Agents
             }
             return 0;
         }
+
+        private AirBlock GetAirBlock(Vector3 pos)
+        {
+            return WorldManager.Instance.GetBlock((int)pos.x, (int)pos.y, (int)pos.z) as AirBlock;
+        }
+
         #endregion
     }
 }

@@ -15,16 +15,14 @@ namespace Antymology.Terrain
 
         #region Fields
 
+        private Dictionary<byte, double> _pheromones = new Dictionary<byte, double>();
+        private const double MAX_PHEROMONE = 1000.0;
+
         /// <summary>
         /// Statically held is visible.
         /// </summary>
         private static bool _isVisible = false;
 
-        /// <summary>
-        /// A dictionary representing the phermone deposits in the air. Each type of phermone gets it's own byte key, and each phermone type has a concentration.
-        /// THIS CURRENTLY ONLY EXISTS AS A WAY OF SHOWING YOU HOW YOU CAN MANIPULATE THE BLOCKS.
-        /// </summary>
-        private Dictionary<byte, double> phermoneDeposits;
 
         #endregion
 
@@ -44,6 +42,29 @@ namespace Antymology.Terrain
         public override Vector2 tileMapCoordinate()
         {
             throw new Exception("An invisible tile cannot have a tile map coordinate.");
+        }
+
+        public void DepositPheromone(byte type, double amount)
+        {
+            if (!_pheromones.ContainsKey(type)) _pheromones[type] = 0;
+            _pheromones[type] += amount;
+            if (_pheromones[type] > MAX_PHEROMONE) _pheromones[type] = MAX_PHEROMONE;
+        }
+
+        public double GetPheromone(byte type)
+        {
+            if (_pheromones.ContainsKey(type)) return _pheromones[type];
+            return 0.0;
+        }
+
+        public void Decay(float decayRate)
+        {
+            var keys = new List<byte>(_pheromones.Keys);
+            foreach (var key in keys)
+            {
+                _pheromones[key] *= decayRate;
+                if (_pheromones[key] < 0.1) _pheromones.Remove(key);
+            }
         }
 
         /// <summary>
