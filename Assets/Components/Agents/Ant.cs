@@ -1,6 +1,7 @@
 using Antymology.Terrain;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.UI;
 
 namespace Antymology.Agents
 {
@@ -91,28 +92,61 @@ namespace Antymology.Agents
                 GetBlockAt(_currentPos + Vector3.down) is MulchBlock ? 1f : 0f,
                 GetBlockAt(_currentPos + Vector3.down) is ContainerBlock ? 1f : 0f,
                 Random.value,
-                queenSmell > 0 ? 1f : 0f
+                queenSmell > 0 ? 1f : 0f,
+                GetBlockAt(_currentPos + Vector3.down) is AcidicBlock ? 10.0f : 0f
+
             };
 
             // Calculate desire for each action based on Genome weights
-            
-            float moveDesire = inputs[3] * Genome[0]; 
-            float eatDesire = inputs[1] * inputs[0] * Genome[1]; // Desire to eat rises if health is low and food is present
-            float digDesire = inputs[2] * Genome[2];
-            float buildDesire = (IsQueen && CurrentHealth >= BUILD_COST) ? inputs[3] * Genome[3] : -1f;
+       
+            float moveDesire = 0f, eatDesire = 0f, digDesire = 0f, buildDesire = 0f, seekQueenDesire = 0f;
 
-            float seekQueenDesire = (!IsQueen) ? inputs[4] * Genome[4] : -1f;
-            
+            if (IsQueen)
+            {
+                moveDesire = inputs[5] + inputs[3];
+                eatDesire     = inputs[1] * inputs[0];
+                buildDesire = (CurrentHealth >= 2 * BUILD_COST) ? 0.5f : 0f;
+
+
+            }
+            else
+            {
+                moveDesire          = inputs[3] * Genome[0]; 
+                eatDesire           = inputs[1] * inputs[0] * Genome[1]; // Desire to eat rises if health is low and food is present
+                digDesire           = inputs[2] * Genome[2];
+                seekQueenDesire     = inputs[4] * Genome[4];
+            }
+
             // Select highest desire
             float max = Mathf.Max(moveDesire, eatDesire, digDesire, buildDesire, seekQueenDesire);
 
+            bool _ant_type = IsQueen;
 
-
-            if (max == eatDesire) TryEat();
-            else if (max == buildDesire) TryBuildNest();
-            else if (max == digDesire) TryDig();
-            else if (max == seekQueenDesire) TryMoveTowardsQueen(); 
-            else TryMove(); // Default to moving
+            if (max == eatDesire) 
+            {
+                if (_ant_type) Debug.Log("try eat");
+                TryEat();
+            }    
+            else if (max == buildDesire)
+            {
+                if (_ant_type) Debug.Log("try build");
+                TryBuildNest();
+            }
+            else if (max == digDesire)
+            {
+                if (_ant_type) Debug.Log("try dig");
+                TryDig();
+            }
+            else if (max == seekQueenDesire) 
+            {
+                if (_ant_type) Debug.Log("try seek");
+                TryMoveTowardsQueen(); 
+            }
+            else 
+            {
+                if (_ant_type) Debug.Log("try move");
+                TryMove(); // Default to moving
+            }
         }
 
         #region Actions
@@ -120,21 +154,7 @@ namespace Antymology.Agents
         private void TryMove()
         {
             // Get valid neighbors
-            List<Vector3> validMoves = new List<Vector3>();
-            Vector3[] directions = { Vector3.forward, Vector3.back, Vector3.left, Vector3.right };
-
-            foreach (var dir in directions)
-            {
-                Vector3 target = _currentPos + dir;
-                
-                // Can only move if Y difference is <= 2
-                int surfaceY = FindSurfaceY((int)target.x, (int)target.z);
-                
-                if (Mathf.Abs(surfaceY - _currentPos.y) <= 2)
-                {
-                    validMoves.Add(new Vector3(target.x, surfaceY + 1, target.z));
-                }
-            }
+            List<Vector3> validMoves = CheckMoves(2);
 
             if (validMoves.Count > 0)
             {
@@ -159,12 +179,19 @@ namespace Antymology.Agents
         {
             if (!IsQueen || CurrentHealth < BUILD_COST) return;
 
-            // Build nest at current location
-            Vector3 targetBlockPos = _currentPos;
-            WorldManager.Instance.SetBlock((int)targetBlockPos.x, (int)targetBlockPos.y, (int)targetBlockPos.z, new NestBlock());
-            CurrentHealth -= BUILD_COST;
-            
-            SimulationManager.Instance.ReportNestBuilt();
+            List<Vector3> validMoves = CheckMoves(0);
+
+            if (validMoves.Count > 0)
+            {
+                // Build nest at current location
+                Vector3 targetBlockPos = _currentPos;
+                WorldManager.Instance.SetBlock((int)targetBlockPos.x, (int)targetBlockPos.y, (int)targetBlockPos.z, new NestBlock());
+                CurrentHealth -= BUILD_COST;
+
+                Debug.Log($"Nestblock placed, current health: {CurrentHealth}");
+                
+                SimulationManager.Instance.ReportNestBuilt();
+            }
         }
 
         private void TryDig()
@@ -223,6 +250,7 @@ namespace Antymology.Agents
 
         private void Die()
         {
+            if (IsQueen) Debug.Log("The Queen is dead.");
             SimulationManager.Instance.RemoveAnt(this);
             Destroy(gameObject);
         }
@@ -268,6 +296,26 @@ namespace Antymology.Agents
         private AbstractBlock GetBlockAt(Vector3 pos)
         {
             return WorldManager.Instance.GetBlock((int)pos.x, (int)pos.y, (int)pos.z);
+        }
+
+        private List<Vector3> CheckMoves(int y_target)
+        {
+            List<Vector3> validMoves = new List<Vector3>();
+            Vector3[] directions = { Vector3.forward, Vector3.back, Vector3.left, Vector3.right };
+
+            foreach (var dir in directions)
+            {
+                Vector3 target = _currentPos + dir;
+                
+                int surfaceY = FindSurfaceY((int)target.x, (int)target.z);
+                
+                if (Mathf.Abs(surfaceY - _currentPos.y) <= y_target)
+                {
+                    validMoves.Add(new Vector3(target.x, surfaceY + 1, target.z));
+                }
+            }
+
+            return validMoves;
         }
 
         private int FindSurfaceY(int x, int z)

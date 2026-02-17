@@ -9,7 +9,7 @@ namespace Antymology.Agents
     {
         public GameObject AntPrefab;
         public int PopulationSize = 20;
-        public float TimeScale = 10.0f;
+        public float TimeScale = 1.0f;
         public int MaxTicksPerGeneration = 1000;
 
         private List<Ant> _ants = new List<Ant>();
@@ -22,6 +22,9 @@ namespace Antymology.Agents
         private int _bestFitnessSoFar = -1;
         private float[] _currentTestedGenome;
 
+        private float _timer = 0f;
+        private const float TICK_DELAY = 1f / 60f;
+
         void Start()
         {
             // Initial Random Population
@@ -30,22 +33,36 @@ namespace Antymology.Agents
 
         void Update()
         {
-            // Speed control
+            // 1. Set Unity's TimeScale so other things (like Camera/Physics) sync up
             Time.timeScale = TimeScale;
 
-            // Game Loop
-            if (_currentTick < MaxTicksPerGeneration && _ants.Count > 0)
+            // 2. Accumulate time. 
+            // Time.deltaTime scales with Time.timeScale automatically.
+            // If TimeScale is 10, deltaTime is 10x larger, so we add more time here.
+            _timer += Time.deltaTime;
+
+            // 3. Run as many ticks as needed to catch up
+            while (_timer >= TICK_DELAY)
             {
-                // Run Tick for all ants
-                for (int i = _ants.Count - 1; i >= 0; i--)
+                _timer -= TICK_DELAY;
+                
+                // Game Loop Logic
+                if (_currentTick < MaxTicksPerGeneration && _ants.Count > 0)
                 {
-                    if (_ants[i] != null) _ants[i].OnTick();
+                    for (int i = _ants.Count - 1; i >= 0; i--)
+                    {
+                        if (_ants[i] != null) _ants[i].OnTick();
+                    }
+                    _currentTick++;
                 }
-                _currentTick++;
-            }
-            else
-            {
-                EndGeneration();
+                else
+                {
+                    EndGeneration();
+                    // Break the loop so we don't start a new generation 
+                    // and instantly run 500 ticks of it in the same frame
+                    _timer = 0; 
+                    break; 
+                }
             }
         }
 
@@ -63,7 +80,7 @@ namespace Antymology.Agents
             else
             {
                 // INITIALIZATION: First generation gets random weights.
-                _currentTestedGenome = new float[] { Random.value, Random.value, Random.value, Random.value };
+                _currentTestedGenome = new float[] { Random.value, Random.value, Random.value, Random.value, Random.value };
             }
             
             for (int i = 0; i < PopulationSize; i++)
