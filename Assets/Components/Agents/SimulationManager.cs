@@ -25,6 +25,7 @@ namespace Antymology.Agents
 
         private float _timer = 0f;
         private const float TICK_DELAY = 1f / 60f;
+        private List<AirBlock> _pheromoneBlocks = new List<AirBlock>();
 
         void Start()
         {
@@ -158,6 +159,16 @@ namespace Antymology.Agents
         public void ReportNestBuilt()
         {
             _nestsBuiltThisGen++;
+        }
+
+        public void ReportPheromoneDeposit(AirBlock airBlock)
+        {
+            if (!_pheromoneBlocks.Contains(airBlock)) _pheromoneBlocks.Add(airBlock);
+        }
+
+        public void RemovePheromoneBlock(AirBlock airBlock)
+        {
+            if (_pheromoneBlocks.Contains(airBlock)) _pheromoneBlocks.Remove(airBlock);
         }
 
         public void RemoveAnt(Ant ant)

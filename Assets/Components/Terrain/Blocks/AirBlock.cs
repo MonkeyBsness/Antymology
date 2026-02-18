@@ -46,7 +46,14 @@ namespace Antymology.Terrain
 
         public void DepositPheromone(byte type, double amount, bool is_diffuse = false)
         {
-            if (!_pheromones.ContainsKey(type)) _pheromones[type] = 0;
+            
+            if (!_pheromones.ContainsKey(type))
+            {
+                if(_pheromones.Count == 0) SimulationManager.Instance.ReportPheromoneDeposit(this);
+            
+                _pheromones[type] = 0;
+
+            } 
 
             _pheromones[type] += amount;
             if (_pheromones[type] > MAX_PHEROMONE) _pheromones[type] = MAX_PHEROMONE;
@@ -71,6 +78,7 @@ namespace Antymology.Terrain
                 _pheromones[key] *= decayRate;
                 if (_pheromones[key] < 0.1) _pheromones.Remove(key);
             }
+            if (_pheromones.Count == 0) SimulationManager.Instance.RemovePheromoneBlock(this);
         }
 
         private void Diffuse(byte type, double amount, int r = 3)
