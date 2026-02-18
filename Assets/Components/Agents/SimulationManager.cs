@@ -51,6 +51,7 @@ namespace Antymology.Agents
                 // Game Loop Logic
                 if (_currentTick < MaxTicksPerGeneration && _ants.Count > 0)
                 {
+                    DecayPheromone();
                     for (int i = _ants.Count - 1; i >= 0; i--)
                     {
                         if (_ants[i] != null) _ants[i].OnTick();
@@ -142,6 +143,7 @@ namespace Antymology.Agents
 
             foreach(var ant in _ants) if(ant != null) Destroy(ant.gameObject);
             _ants.Clear();
+            ClearPheromone();
 
             _generationCount++;
             SpawnGeneration();
@@ -154,6 +156,27 @@ namespace Antymology.Agents
             int geneToMutate = Random.Range(0, child.Length);
             child[geneToMutate] += Random.Range(-0.2f, 0.2f); // Small mutation
             return child;
+        }
+
+        private void DecayPheromone()
+        {
+            if (_pheromoneBlocks.Count != 0)
+            {
+                Debug.Log("Pheromone Decaied");
+            }
+            foreach(var airBlock in _pheromoneBlocks) 
+            {
+                airBlock.Decay(DecayRate);
+            }
+        }
+
+        private void ClearPheromone()
+        {
+            foreach(var airBlock in _pheromoneBlocks) 
+            {
+                airBlock.Clear();
+            }
+            _pheromoneBlocks.Clear();
         }
 
         public void ReportNestBuilt()

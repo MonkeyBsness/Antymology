@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using UnityEngine;
+using Antymology.Agents;
 
 namespace Antymology.Terrain
 {
@@ -79,6 +80,11 @@ namespace Antymology.Terrain
                 if (_pheromones[key] < 0.1) _pheromones.Remove(key);
             }
             if (_pheromones.Count == 0) SimulationManager.Instance.RemovePheromoneBlock(this);
+        }
+
+        public void Clear()
+        {
+            _pheromones.Clear();
         }
 
         private void Diffuse(byte type, double amount, int r = 3)
