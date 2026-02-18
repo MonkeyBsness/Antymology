@@ -44,11 +44,17 @@ namespace Antymology.Terrain
             throw new Exception("An invisible tile cannot have a tile map coordinate.");
         }
 
-        public void DepositPheromone(byte type, double amount)
+        public void DepositPheromone(byte type, double amount, bool is_diffuse = false)
         {
             if (!_pheromones.ContainsKey(type)) _pheromones[type] = 0;
+
             _pheromones[type] += amount;
             if (_pheromones[type] > MAX_PHEROMONE) _pheromones[type] = MAX_PHEROMONE;
+            if (!is_diffuse)
+            {
+                Diffuse(type, amount);
+            }
+
         }
 
         public double GetPheromone(byte type)
@@ -67,16 +73,32 @@ namespace Antymology.Terrain
             }
         }
 
-        /// <summary>
-        /// THIS CURRENTLY ONLY EXISTS AS A WAY OF SHOWING YOU WHATS POSSIBLE.
-        /// </summary>
-        /// <param name="neighbours"></param>
-        public void Diffuse(AbstractBlock[] neighbours)
+        private void Diffuse(byte type, double amount, int r = 3)
         {
-            throw new NotImplementedException();
+            var neighbors = new List<AirBlock>();
+            Vector3 cur_pos = new Vector3(this.worldXCoordinate, this.worldYCoordinate, this.worldZCoordinate);
+
+            for (int dx = -r; dx <= r; dx++)
+            for (int dy = -r; dy <= r; dy++)
+            for (int dz = -r; dz <= r; dz++)
+            {
+                if (dx == 0 && dy == 0 && dz == 0) continue;
+                AirBlock neighbor = GetAirBlock(cur_pos + new Vector3(dx, dy, dz));
+                int max = Mathf.Max(Mathf.Abs(dx), Mathf.Abs(dy), Mathf.Abs(dz));
+                amount = amount/(2*max);
+                if (neighbor != null) neighbor.DepositPheromone(type, amount, true);
+            }
+
+
+        }
+
+        private AirBlock GetAirBlock(Vector3 pos)
+        {
+            return WorldManager.Instance.GetBlock((int)pos.x, (int)pos.y, (int)pos.z) as AirBlock;
         }
 
         #endregion
+
 
     }
 }

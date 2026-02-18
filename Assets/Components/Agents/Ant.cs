@@ -261,14 +261,6 @@ namespace Antymology.Agents
             AirBlock current = GetAirBlock(_currentPos);
             if (current != null) current.DepositPheromone(PHEROMONE_QUEEN, 100.0);
 
-            // Deposit weaker scent in neighbors to create a gradient
-            // This helps workers find the queen even if they aren't on the exact same block
-            Vector3[] offsets = { Vector3.forward, Vector3.back, Vector3.left, Vector3.right };
-            foreach (var offset in offsets)
-            {
-                AirBlock neighbor = GetAirBlock(_currentPos + offset);
-                if (neighbor != null) neighbor.DepositPheromone(PHEROMONE_QUEEN, 50.0);
-            }
         }
 
         private void TryHealQueen()

@@ -9,6 +9,7 @@ namespace Antymology.Agents
     {
         public GameObject AntPrefab;
         public int PopulationSize = 20;
+        public float DecayRate = 0.8f;
         public float TimeScale = 1.0f;
         public int MaxTicksPerGeneration = 1000;
 
