@@ -447,7 +447,7 @@ MonoBehaviour:
   MaxTicksPerGeneration: 1000
   GenomePopulationSize: 10
   EpisodesPerGenome: 1
-  GenomeLength: 44
+  GenomeLength: 89
   Elitism: 2
   TournamentSize: 3
   MutationRate: 0.05

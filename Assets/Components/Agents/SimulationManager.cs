@@ -35,7 +35,7 @@ namespace Antymology.Agents
         public int EpisodesPerGenome = 3;
 
         [Tooltip("Genome length. Must match Ant.cs' expected indexing.")]
-        public int GenomeLength = 44;
+        public int GenomeLength = 89;
 
         [Tooltip("How many top genomes to copy unchanged into next generation.")]
         public int Elitism = 2;

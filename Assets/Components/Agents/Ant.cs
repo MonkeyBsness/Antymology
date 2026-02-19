@@ -17,31 +17,41 @@ namespace Antymology.Agents
         private const byte PHEROMONE_QUEEN  = 2;
         private const byte PHEROMONE_FOOD   = 3;
         private const byte PHEROMONE_DANGER = 4;
+        private const byte PHEROMONE_WORKER = 5;
 
         #endregion
 
         #region Genome layout (must match SimulationManager.GenomeLength)
         private const int INPUTS = 9;
-
+        // Worker
         private const int OFF_EAT        = 0;              
         private const int OFF_SEEK_FOOD  = OFF_EAT + INPUTS;    //0-8   
         private const int OFF_SEEK_QUEEN = OFF_SEEK_FOOD + INPUTS; //9-17
         private const int OFF_EXPLORE    = OFF_SEEK_QUEEN + INPUTS;     //18-26
-
         private const int IDX_TRANSFER_MIN_HEALTH   = OFF_EXPLORE + INPUTS;     //27 -35
-        private const int IDX_QUEEN_TARGET_HEALTH   = IDX_TRANSFER_MIN_HEALTH + 1; //36
-        private const int IDX_TRANSFER_AMOUNT       = IDX_TRANSFER_MIN_HEALTH + 2; 
-        private const int IDX_FOOD_DEPOSIT_STRENGTH = IDX_TRANSFER_MIN_HEALTH + 3;
-        private const int IDX_DANGER_DEPOSIT_STRENGTH = IDX_TRANSFER_MIN_HEALTH + 4;
-        private const int IDX_QUEEN_SCENT_STRENGTH  =  IDX_TRANSFER_MIN_HEALTH + 5;
-        private const int IDX_QUEEN_BUILD_THRESHOLD = IDX_TRANSFER_MIN_HEALTH + 6;
-        private const int IDX_QUEEN_BUILD_AGGRESSIVENESS = IDX_TRANSFER_MIN_HEALTH + 7;
+
+        // Queen
+        private const int OFF_EAT_QUEEN = IDX_TRANSFER_MIN_HEALTH + INPUTS; // 36 - 44
+        private const int OFF_SEEK_FOOD_QUEEN   = OFF_EAT_QUEEN + INPUTS; // 45 - 53
+        private const int OFF_SEEK_WORKER_QUEEN = OFF_SEEK_FOOD_QUEEN + INPUTS; // 54 - 62
+        private const int OFF_EXPLORE_QUEEN = OFF_SEEK_WORKER_QUEEN + INPUTS; // 63 - 71
+        private const int OFF_BUILD_QUEEN   = OFF_EXPLORE_QUEEN + INPUTS; // 72 - 80
+
+        // Other
+        private const int IDX_QUEEN_TARGET_HEALTH   = OFF_BUILD_QUEEN + 1; //81
+        private const int IDX_TRANSFER_AMOUNT       = OFF_BUILD_QUEEN + 2; 
+        private const int IDX_FOOD_DEPOSIT_STRENGTH = OFF_BUILD_QUEEN + 3;
+        private const int IDX_DANGER_DEPOSIT_STRENGTH = OFF_BUILD_QUEEN + 4;
+        private const int IDX_QUEEN_SCENT_STRENGTH  =  OFF_BUILD_QUEEN + 5;
+        private const int IDX_QUEEN_BUILD_THRESHOLD = OFF_BUILD_QUEEN + 6;
+        private const int IDX_QUEEN_BUILD_AGGRESSIVENESS = OFF_BUILD_QUEEN + 7;
         #endregion
 
         #region State
         public float CurrentHealth;
         public bool IsQueen;
         public float[] Genome;
+        private int tickCount;
 
         private Vector3 _currentPos;
         private Vector3 _lastPos;
@@ -53,6 +63,7 @@ namespace Antymology.Agents
             CurrentHealth = MAX_HEALTH;
             IsQueen = isQueen;
             Genome = genome;
+            tickCount = 0;
 
             _currentPos = transform.position;
             _lastPos = _currentPos;
@@ -68,7 +79,22 @@ namespace Antymology.Agents
             if (CurrentHealth <= 0) return;
 
             // Queen always leaves a trail home (strength is gene-controlled)
-            if (IsQueen) BroadcastQueenScent();
+            if (tickCount % 2 == 0)
+            {
+                if (IsQueen)
+                {
+                    BroadcastQueenScent();
+                }
+                else
+                {
+                    BroadcastWorkerScent();
+                }
+            }
+
+            if (IsQueen)
+            {
+                BroadcastQueenScent();
+            } 
 
             // Workers can feed/transfer health to queen if close
             if (!IsQueen) TryHealQueen();
@@ -94,11 +120,66 @@ namespace Antymology.Agents
 
         private void DecideAndAct()
         {
-            if (IsQueen) QueenAct();
+            if (IsQueen) TempQueenAct();
             else WorkerAct();
         }
 
         // -------------------- Worker policy --------------------
+
+        private void TempQueenAct()
+        {
+            float workerSmell   = Smell01(PHEROMONE_WORKER);
+            float foodSmell     = Smell01(PHEROMONE_FOOD);
+            float dangerSmell   = Smell01(PHEROMONE_DANGER);
+
+            AbstractBlock under = GetBlockAt(_currentPos + Vector3.down);
+
+            float[] inputs = new float[INPUTS]
+            {
+                CurrentHealth < 30 ? 1f : 0f,                    // 0 lowHealth
+                CurrentHealth > 60 ? 1f : 0f,                    // 1 highHealth   
+                under is MulchBlock ? 1f : 0f,                   // 2 onMulch
+                under is ContainerBlock ? 1f : 0f,               // 3 onContainer
+                workerSmell,                                      // 4 workerSmell
+                foodSmell,                                       // 5 foodSmell
+                dangerSmell,                                     // 6 dangerSmell
+                Random.value,                                    // 7 noise
+                under is AcidicBlock ? 1f : 0f                   // 8 onAcid
+            };
+
+            float eatDesire         = Score(OFF_EAT_QUEEN, inputs);
+            float seekFoodDesire    = Score(OFF_SEEK_FOOD_QUEEN, inputs);
+            float seekWorkerDesire  = Score(OFF_SEEK_WORKER_QUEEN, inputs);
+            float exploreDesire     = Score(OFF_EXPLORE_QUEEN, inputs);
+            float buildDesire       = Score(OFF_BUILD_QUEEN, inputs);
+
+            float max = Mathf.Max(eatDesire, seekFoodDesire, seekWorkerDesire, exploreDesire, buildDesire);
+
+            if (max == eatDesire)
+            {
+                // Debug.Log("try eat");
+                TryEat();
+            }
+            else if (max == seekFoodDesire)
+            {
+                // Debug.Log("try seekFood");
+                TryMoveTowardsPheromone(PHEROMONE_FOOD, avoidDanger: true);
+            }
+            else if (max == seekWorkerDesire)
+            {
+                // Debug.Log("try seekQueen");
+                TryMoveTowardsPheromone(PHEROMONE_WORKER, avoidDanger: true);
+            }
+            else if (max == buildDesire)
+            {
+                TryBuildNest();
+            }
+            else
+            {
+                // Debug.Log("try Move");
+                TryMoveForward();
+            }
+        }
 
         private void WorkerAct()
         {
@@ -123,7 +204,10 @@ namespace Antymology.Agents
             };
 
             // Deposit pheromones as a *side effect* (gene controlled)
-            TryDepositWorkerPheromones(inputs);
+            if (tickCount % 2 == 0)
+            {
+                TryDepositWorkerPheromones(inputs);
+            }
 
             // If genome not present / too short, fallback to your old heuristic
             if (Genome == null || Genome.Length <= IDX_QUEEN_BUILD_AGGRESSIVENESS)
@@ -448,6 +532,16 @@ namespace Antymology.Agents
             // }
 
             current.DepositPheromone(PHEROMONE_QUEEN, strength);
+        }
+
+        private void BroadcastWorkerScent()
+        {
+            AirBlock current = GetAirBlock(_currentPos);
+            if (current == null) return;
+
+            double strength = 20.0;
+
+            current.DepositPheromone(PHEROMONE_WORKER, strength);
         }
 
         private void TryHealQueen()
