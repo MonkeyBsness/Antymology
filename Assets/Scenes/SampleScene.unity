@@ -304,13 +304,13 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 963194225}
   serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 1, z: -10}
+  m_LocalRotation: {x: -0, y: -0, z: -0.75235933, w: 0.6587529}
+  m_LocalPosition: {x: 0, y: 2.88, z: -10}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 0}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: -97.59}
 --- !u!114 &963194229
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -438,16 +438,15 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::Antymology.Agents.SimulationManager
   AntPrefab: {fileID: 2085152731265447959, guid: 1943dbb7084cae44da8b2be0bf59b755,
     type: 3}
-  PopulationSize: 30
+  PopulationSize: 50
   DecayRate: 0.8
   DiffusionRate: 0.25
   DiffusionIterations: 1
   PheromoneEpsilon: 0.05
-  TimeScale: 0.1
+  TimeScale: 5
   MaxTicksPerGeneration: 1000
   GenomePopulationSize: 10
   EpisodesPerGenome: 1
-  GenomeLength: 89
   Elitism: 2
   TournamentSize: 3
   MutationRate: 0.05

@@ -5,14 +5,7 @@ using UnityEngine;
 namespace Antymology.Terrain
 {
     /// <summary>
-    /// Centralized pheromone grid for performance.
-    /// 
-    /// Key ideas:
-    /// - Ants "deposit" into a 3D float grid (O(1)).
-    /// - Each tick we apply decay + one diffusion iteration ONLY within an active bounding box.
-    /// - Values below Epsilon are clamped to 0, shrinking the active region over time.
-    /// 
-    /// This replaces per-AirBlock dictionaries + per-deposit 3D diffusion.
+    /// Centralized pheromone grid for performance..
     /// </summary>
     public class PheromoneField : MonoBehaviour
     {
@@ -59,7 +52,6 @@ namespace Antymology.Terrain
             var wm = WorldManager.Instance;
             if (wm == null) return;
 
-            // Prefer public size properties if you added them, otherwise fall back to reflection on private Blocks[,,].
             try
             {
                 var t = wm.GetType();
@@ -92,7 +84,6 @@ namespace Antymology.Terrain
             }
             catch (Exception)
             {
-                // ignore; will remain uninitialized this frame
             }
         }
 
@@ -153,7 +144,7 @@ namespace Antymology.Terrain
         }
 
         /// <summary>
-        /// Deposit pheromone into the grid. No immediate diffusion; diffusion happens in Step().
+        /// Deposit pheromone into the grid. No immediate diffusion.
         /// </summary>
         public void Deposit(int x, int y, int z, byte type, float amount)
         {
@@ -192,7 +183,7 @@ namespace Antymology.Terrain
 
             decayRate = Mathf.Clamp01(decayRate);
 
-            // We'll compute next active bounds while we update.
+            //compute next active bounds
             bool nextHas = false;
             int nMinX = int.MaxValue, nMinY = int.MaxValue, nMinZ = int.MaxValue;
             int nMaxX = int.MinValue, nMaxY = int.MinValue, nMaxZ = int.MinValue;
@@ -203,7 +194,7 @@ namespace Antymology.Terrain
                 byte type = kv.Key;
                 var g = kv.Value;
 
-                // 1) Decay in-place for current active region
+                // Decay in-place for current active region
                 for (int x = _minX; x <= _maxX; x++)
                 for (int y = _minY; y <= _maxY; y++)
                 for (int z = _minZ; z <= _maxZ; z++)
@@ -212,7 +203,7 @@ namespace Antymology.Terrain
                     g[x, y, z] = (v < Epsilon) ? 0f : v;
                 }
 
-                // 2) Diffusion iterations (6-neighbor) using buffer
+                // Diffusion iterations using buffer
                 for (int iter = 0; iter < DiffusionIterations; iter++)
                 {
                     var b = GetBuffer(type);
@@ -254,7 +245,7 @@ namespace Antymology.Terrain
                         g[x, y, z] = b[x, y, z];
                 }
 
-                // 3) Update next active bounds (union across types)
+                // Update next active bounds
                 for (int x = _minX; x <= _maxX; x++)
                 for (int y = _minY; y <= _maxY; y++)
                 for (int z = _minZ; z <= _maxZ; z++)
@@ -280,7 +271,7 @@ namespace Antymology.Terrain
                 }
             }
 
-            // Expand next bounds by 1 to allow diffusion neighborhood next tick.
+            // Expand next bounds by 1
             if (nextHas)
             {
                 _hasActive = true;
