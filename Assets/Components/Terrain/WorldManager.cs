@@ -41,6 +41,8 @@ namespace Antymology.Terrain
         /// </summary>
         private SimplexNoise SimplexNoise;
 
+        private GameObject _chunkContainer;
+
         #endregion
 
         #region Initialization
@@ -81,6 +83,28 @@ namespace Antymology.Terrain
             Camera.main.transform.LookAt(new Vector3(Blocks.GetLength(0), 0, Blocks.GetLength(2)));
 
             GenerateAnts();
+        }
+
+        public void ResetWorld()
+        {
+            // A. 销毁旧的视觉区块
+            if (_chunkContainer != null)
+            {
+                Destroy(_chunkContainer);
+            }
+
+            // B. 重置随机数生成器 (如果你希望每次重置的地形完全一致，必须这一步)
+            // 如果你希望每回合地形不同，可以使用新的随机种子，例如 System.DateTime.Now.GetHashCode()
+            RNG = new System.Random(ConfigurationManager.Instance.Seed);
+            
+            // SimplexNoise 通常是基于坐标的，但如果需要也可以重置
+            SimplexNoise = new SimplexNoise(ConfigurationManager.Instance.Seed);
+
+            // C. 重新生成数据 (覆盖 Blocks 数组，重置被蚂蚁挖过的地块)
+            GenerateData();
+
+            // D. 重新生成网格 (创建新的 Chunks 物体)
+            GenerateChunks();
         }
 
         /// <summary>
@@ -410,14 +434,15 @@ namespace Antymology.Terrain
         /// </summary>
         private void GenerateChunks()
         {
-            GameObject chunkObg = new GameObject("Chunks");
+            //GameObject chunkObg = new GameObject("Chunks");
+            _chunkContainer = new GameObject("Chunks");
 
             for (int x = 0; x < Chunks.GetLength(0); x++)
                 for (int z = 0; z < Chunks.GetLength(2); z++)
                     for (int y = 0; y < Chunks.GetLength(1); y++)
                     {
                         GameObject temp = new GameObject();
-                        temp.transform.parent = chunkObg.transform;
+                        temp.transform.parent = _chunkContainer.transform;
                         temp.transform.position = new Vector3
                         (
                             x * ConfigurationManager.Instance.Chunk_Diameter - 0.5f,

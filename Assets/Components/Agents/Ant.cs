@@ -21,21 +21,21 @@ namespace Antymology.Agents
         #endregion
 
         #region Genome layout (must match SimulationManager.GenomeLength)
-        private const int INPUTS = 8;
+        private const int INPUTS = 9;
 
-        private const int OFF_EAT        = 0;              //  0..7
-        private const int OFF_SEEK_FOOD  = OFF_EAT + INPUTS;       //  8..15
-        private const int OFF_SEEK_QUEEN = OFF_SEEK_FOOD + INPUTS; // 16..23
-        private const int OFF_EXPLORE    = OFF_SEEK_QUEEN + INPUTS;// 24..31
+        private const int OFF_EAT        = 0;              
+        private const int OFF_SEEK_FOOD  = OFF_EAT + INPUTS;    //0-8   
+        private const int OFF_SEEK_QUEEN = OFF_SEEK_FOOD + INPUTS; //9-17
+        private const int OFF_EXPLORE    = OFF_SEEK_QUEEN + INPUTS;     //18-26
 
-        private const int IDX_TRANSFER_MIN_HEALTH   = OFF_EXPLORE + INPUTS; // 32
-        private const int IDX_QUEEN_TARGET_HEALTH   = 33;
-        private const int IDX_TRANSFER_AMOUNT       = 34;
-        private const int IDX_FOOD_DEPOSIT_STRENGTH = 35;
-        private const int IDX_DANGER_DEPOSIT_STRENGTH = 36;
-        private const int IDX_QUEEN_SCENT_STRENGTH  = 37;
-        private const int IDX_QUEEN_BUILD_THRESHOLD = 38;
-        private const int IDX_QUEEN_BUILD_AGGRESSIVENESS = 39;
+        private const int IDX_TRANSFER_MIN_HEALTH   = OFF_EXPLORE + INPUTS;     //27 -35
+        private const int IDX_QUEEN_TARGET_HEALTH   = IDX_TRANSFER_MIN_HEALTH + 1; //36
+        private const int IDX_TRANSFER_AMOUNT       = IDX_TRANSFER_MIN_HEALTH + 2; 
+        private const int IDX_FOOD_DEPOSIT_STRENGTH = IDX_TRANSFER_MIN_HEALTH + 3;
+        private const int IDX_DANGER_DEPOSIT_STRENGTH = IDX_TRANSFER_MIN_HEALTH + 4;
+        private const int IDX_QUEEN_SCENT_STRENGTH  =  IDX_TRANSFER_MIN_HEALTH + 5;
+        private const int IDX_QUEEN_BUILD_THRESHOLD = IDX_TRANSFER_MIN_HEALTH + 6;
+        private const int IDX_QUEEN_BUILD_AGGRESSIVENESS = IDX_TRANSFER_MIN_HEALTH + 7;
         #endregion
 
         #region State
@@ -111,14 +111,15 @@ namespace Antymology.Agents
 
             float[] inputs = new float[INPUTS]
             {
-                CurrentHealth < 50 ? 1f : 0f,                    // 0 lowHealth
-                under is MulchBlock ? 1f : 0f,                   // 1 onMulch
-                under is ContainerBlock ? 1f : 0f,               // 2 onContainer
-                queenSmell,                                      // 3 queenSmell
-                foodSmell,                                       // 4 foodSmell
-                dangerSmell,                                     // 5 dangerSmell
-                Random.value,                                    // 6 noise
-                under is AcidicBlock ? 1f : 0f                   // 7 onAcid
+                CurrentHealth < 30 ? 1f : 0f,                    // 0 lowHealth
+                CurrentHealth > 60 ? 1f : 0f,                    // 1 highHealth   
+                under is MulchBlock ? 1f : 0f,                   // 2 onMulch
+                under is ContainerBlock ? 1f : 0f,               // 3 onContainer
+                queenSmell,                                      // 4 queenSmell
+                foodSmell,                                       // 5 foodSmell
+                dangerSmell,                                     // 6 dangerSmell
+                Random.value,                                    // 7 noise
+                under is AcidicBlock ? 1f : 0f                   // 8 onAcid
             };
 
             // Deposit pheromones as a *side effect* (gene controlled)
@@ -128,6 +129,13 @@ namespace Antymology.Agents
             if (Genome == null || Genome.Length <= IDX_QUEEN_BUILD_AGGRESSIVENESS)
             {
                 LegacyWorkerAct(inputs);
+                if (Genome == null)
+                {
+                    Debug.Log("genome not null");
+                    return;
+                }
+                
+                Debug.Log($"genome not match {Genome.Length} : {IDX_QUEEN_BUILD_AGGRESSIVENESS}");
                 return;
             }
 
@@ -137,21 +145,25 @@ namespace Antymology.Agents
             float exploreDesire   = Score(OFF_EXPLORE, inputs);
 
             float max = Mathf.Max(eatDesire, seekFoodDesire, seekQueenDesire, exploreDesire);
-
+            
             if (max == eatDesire)
             {
+                // Debug.Log("try eat");
                 TryEat();
             }
             else if (max == seekFoodDesire)
             {
+                // Debug.Log("try seekFood");
                 TryMoveTowardsPheromone(PHEROMONE_FOOD, avoidDanger: true);
             }
             else if (max == seekQueenDesire)
             {
+                // Debug.Log("try seekQueen");
                 TryMoveTowardsPheromone(PHEROMONE_QUEEN, avoidDanger: true);
             }
             else
             {
+                // Debug.Log("try Move");
                 TryMoveForward();
             }
         }
@@ -199,12 +211,15 @@ namespace Antymology.Agents
 
         private void QueenAct()
         {
+            bool queenUseGenome = false;
             // If genome missing, keep your old behavior
-            if (Genome == null || Genome.Length <= IDX_QUEEN_BUILD_AGGRESSIVENESS)
+            if (Genome == null || Genome.Length <= IDX_QUEEN_BUILD_AGGRESSIVENESS || !queenUseGenome)
             {
                 // Old: build if enough health; else move away from acid
                 if (GetBlockAt(_currentPos + Vector3.down) is AcidicBlock) TryMoveForward();
+                else if (CurrentHealth < 40 && GetBlockAt(_currentPos + Vector3.down) is MulchBlock) TryEat();
                 else if (CurrentHealth >= 2 * BUILD_COST) TryBuildNest();
+                else TryMoveForward();
                 return;
             }
 
@@ -228,7 +243,7 @@ namespace Antymology.Agents
             }
 
             // Otherwise stay (workers should bring health). You can uncomment to let queen wander:
-            // if (Random.value < 0.05f) TryMoveForward();
+            if (Random.value < 0.05f) TryMoveForward();
         }
 
         // -------------------- Actions --------------------
@@ -342,16 +357,17 @@ namespace Antymology.Agents
         {
             if (!IsQueen || CurrentHealth < BUILD_COST) return;
 
-            List<Vector3> validMoves = CheckMoves(0);
+            //List<Vector3> validMoves = CheckMoves(0);
 
-            if (validMoves.Count > 0)
-            {
+            // if (validMoves.Count > 0)
+            // {   
                 Vector3 targetBlockPos = _currentPos;
-                WorldManager.Instance.SetBlock((int)targetBlockPos.x, (int)targetBlockPos.y, (int)targetBlockPos.z, new NestBlock());
+                if (GetBlockAt(_currentPos) is ContainerBlock) return;
+                WorldManager.Instance.SetBlock((int)targetBlockPos.x, (int)targetBlockPos.y - 1, (int)targetBlockPos.z, new NestBlock());
                 CurrentHealth -= BUILD_COST;
 
                 SimulationManager.Instance.ReportNestBuilt();
-            }
+            // }
         }
 
         private void TryDig()
@@ -407,6 +423,14 @@ namespace Antymology.Agents
 
         private void Die()
         {
+            if(IsQueen) 
+            {
+                SimulationManager.Instance.ReportQueenDie();
+            }
+            else
+            {
+                SimulationManager.Instance.ReportWorkerDie();
+            }
             SimulationManager.Instance.RemoveAnt(this);
             Destroy(gameObject);
         }
@@ -418,10 +442,10 @@ namespace Antymology.Agents
 
             double strength = 100.0;
 
-            if (Genome != null && Genome.Length > IDX_QUEEN_BUILD_AGGRESSIVENESS)
-            {
-                strength = DecodeRange(Genome[IDX_QUEEN_SCENT_STRENGTH], 20f, 200f);
-            }
+            // if (Genome != null && Genome.Length > IDX_QUEEN_BUILD_AGGRESSIVENESS)
+            // {
+            //     strength = DecodeRange(Genome[IDX_QUEEN_SCENT_STRENGTH], 20f, 200f);
+            // }
 
             current.DepositPheromone(PHEROMONE_QUEEN, strength);
         }
@@ -435,7 +459,7 @@ namespace Antymology.Agents
             }
 
             float transferMinHealth = DecodeRange(Genome[IDX_TRANSFER_MIN_HEALTH], 40f, 95f);
-            float queenTargetHealth = DecodeRange(Genome[IDX_QUEEN_TARGET_HEALTH], 40f, 120f);
+            float queenTargetHealth = DecodeRange(Genome[IDX_QUEEN_TARGET_HEALTH], 40f, 100f);
             float transferAmount = DecodeRange(Genome[IDX_TRANSFER_AMOUNT], 2f, 25f);
 
             List<Vector3> neighbors = CheckMoves(2);
@@ -453,6 +477,7 @@ namespace Antymology.Agents
 
                 CurrentHealth -= amount;
                 other.ReceiveHealth(amount);
+                SimulationManager.Instance.ReportHealQueen();
                 return;
             }
         }
@@ -478,6 +503,7 @@ namespace Antymology.Agents
         public void ReceiveHealth(float amount)
         {
             CurrentHealth += amount;
+            if (CurrentHealth >= MAX_HEALTH) CurrentHealth = MAX_HEALTH;
         }
 
         // -------------------- Helpers --------------------

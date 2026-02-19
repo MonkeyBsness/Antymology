@@ -35,7 +35,7 @@ namespace Antymology.Agents
         public int EpisodesPerGenome = 3;
 
         [Tooltip("Genome length. Must match Ant.cs' expected indexing.")]
-        public int GenomeLength = 40;
+        public int GenomeLength = 44;
 
         [Tooltip("How many top genomes to copy unchanged into next generation.")]
         public int Elitism = 2;
@@ -66,10 +66,15 @@ namespace Antymology.Agents
 
         // Episode metrics
         private int _nestsBuiltThisEpisode = 0;
+        private bool _queenAlive = true;
+        private int _queenHealed = 0;
+        private int _queenServivedTicks = 0;
+        private int _workerDeathCount = 0;
 
         // Timing
         private float _timer = 0f;
         private const float TICK_DELAY = 1f / 60f;
+
 
         // ---- GA state ----
         [Serializable]
@@ -264,7 +269,12 @@ namespace Antymology.Agents
         private void BeginEpisodeForCurrentIndividual()
         {
             _currentTick = 0;
-            _nestsBuiltThisEpisode = 0;
+            ResetFitness();
+
+            if (WorldManager.Instance != null)
+            {
+                WorldManager.Instance.ResetWorld();
+            }
 
             int seed = RandomSeedBase
                 + (_gaGeneration * 100000)
@@ -305,17 +315,9 @@ namespace Antymology.Agents
 
         private void EndEpisode()
         {
-            bool queenAlive = false;
-            for (int i = 0; i < _ants.Count; i++)
-            {
-                if (_ants[i] != null && _ants[i].IsQueen)
-                {
-                    queenAlive = true;
-                    break;
-                }
-            }
-
-            float fitness = (_nestsBuiltThisEpisode * 100f) + (queenAlive ? 500f : -500f);
+            float queenServivePerpercentage = _queenServivedTicks / MaxTicksPerGeneration;
+            float fitness = (_nestsBuiltThisEpisode * 1f) + ((PopulationSize - _workerDeathCount)*50f) + (_queenHealed * 100f) ;
+            Debug.Log($"Fitness:{fitness} || nestsBuilt: {_nestsBuiltThisEpisode * 1f} workerAlive: {(PopulationSize - _workerDeathCount)*50f} workerHeal: {_queenHealed * 100f}");
 
             var ind = _population[_currentIndividualIndex];
             ind.fitnessSum += fitness;
@@ -370,9 +372,36 @@ namespace Antymology.Agents
             // _pheromoneBlocks.Clear();
         }
 
+        // ------------------- Fitness -------------------
+
+        private void ResetFitness()
+        {
+            _nestsBuiltThisEpisode = 0;
+            _queenAlive = true;
+            _queenHealed = 0;
+            _queenServivedTicks = 0;
+            _workerDeathCount = 0;
+        }
+
         public void ReportNestBuilt()
         {
             _nestsBuiltThisEpisode++;
+        }
+
+        public void ReportHealQueen()
+        {
+            _queenHealed++;
+        }
+
+        public void ReportWorkerDie()
+        {
+            _workerDeathCount++;
+        }
+
+        public void ReportQueenDie()
+        {
+            _queenAlive = false;
+            _queenServivedTicks = _currentTick;
         }
 
         public void ReportPheromoneDeposit(AirBlock airBlock)

@@ -438,9 +438,22 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::Antymology.Agents.SimulationManager
   AntPrefab: {fileID: 2085152731265447959, guid: 1943dbb7084cae44da8b2be0bf59b755,
     type: 3}
-  PopulationSize: 20
-  TimeScale: 10
+  PopulationSize: 30
+  DecayRate: 0.8
+  DiffusionRate: 0.25
+  DiffusionIterations: 1
+  PheromoneEpsilon: 0.05
+  TimeScale: 0.1
   MaxTicksPerGeneration: 1000
+  GenomePopulationSize: 10
+  EpisodesPerGenome: 1
+  GenomeLength: 44
+  Elitism: 2
+  TournamentSize: 3
+  MutationRate: 0.05
+  MutationStdDev: 0.15
+  CrossoverRate: 0.8
+  RandomSeedBase: 12345
 --- !u!4 &1111905425
 Transform:
   m_ObjectHideFlags: 0
