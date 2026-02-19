@@ -5,6 +5,14 @@ using UnityEngine;
 
 namespace Antymology.Agents
 {
+    /// <summary>
+    /// The central orchestrator for the Antymology simulation.
+    /// Responsibilities:
+    /// 1. Manages the "Game Loop" (ticks) independent of Unity's frame rate.
+    /// 2. Implements the Genetic Algorithm (GA) to evolve ant behavior over generations.
+    /// 3. Manages the lifecycle of Episodes (spawning, resetting, scoring).
+    /// 4. Controls global pheromone diffusion and decay updates.
+    /// </summary>
     public class SimulationManager : Singleton<SimulationManager>
     {
         [Header("Scene")]
@@ -35,7 +43,7 @@ namespace Antymology.Agents
         public int EpisodesPerGenome = 3;
 
         [Tooltip("Genome length. Must match Ant.cs' expected indexing.")]
-        public int GenomeLength = 44;
+        private int GenomeLength = 90;
 
         [Tooltip("How many top genomes to copy unchanged into next generation.")]
         public int Elitism = 2;
@@ -77,6 +85,9 @@ namespace Antymology.Agents
 
 
         // ---- GA state ----
+        /// <summary>
+        /// Represents a single candidate solution (Genome) and its performance metrics.
+        /// </summary>
         [Serializable]
         private class Individual
         {
@@ -120,6 +131,7 @@ namespace Antymology.Agents
                 // Run one tick
                 if (_currentTick < MaxTicksPerGeneration && _ants.Count > 0)
                 {
+                    // Global Pheromone System
                     if (PheromoneField.Instance != null)
                     {
                         PheromoneField.Instance.DiffusionRate = DiffusionRate;
@@ -147,6 +159,9 @@ namespace Antymology.Agents
 
         // ------------------- GA -------------------
 
+        /// <summary>
+        /// Seeds the initial population with purely random genomes [-1, 1].
+        /// </summary>
         private void InitPopulationRandom()
         {
             _population.Clear();
@@ -169,6 +184,10 @@ namespace Antymology.Agents
             Debug.Log($"GA: Initialized population of {GenomePopulationSize} genomes (length {GenomeLength}).");
         }
 
+        /// <summary>
+        /// Performs selection, crossover, and mutation to create the next generation.
+        /// Called when all individuals in the current generation have been evaluated.
+        /// </summary>
         private void EvolvePopulation()
         {
             // Sort by average fitness
@@ -181,29 +200,32 @@ namespace Antymology.Agents
 
             var next = new List<Individual>(_population.Count);
 
-            // Elitism
+            // Elitism, Keep the best performers unchanged
             int eliteCount = Mathf.Clamp(Elitism, 0, _population.Count);
             for (int i = 0; i < eliteCount; i++)
             {
                 next.Add(new Individual(_population[i].genome));
             }
 
-            // Fill rest
+            // Reproduction: Fill the rest of the population
             while (next.Count < _population.Count)
             {
+                // Tournament Selection
                 var p1 = TournamentSelect();
                 var p2 = TournamentSelect();
 
+                // Crossover
                 float[] child = (UnityEngine.Random.value < CrossoverRate)
                     ? UniformCrossover(p1.genome, p2.genome)
                     : (float[])p1.genome.Clone();
 
+                // Mutation
                 MutateInPlace(child);
 
                 next.Add(new Individual(child));
             }
 
-            // Replace
+            // Replace Population
             _population.Clear();
             _population.AddRange(next);
 
@@ -219,6 +241,9 @@ namespace Antymology.Agents
             _currentEpisodeRepeat = 0;
         }
 
+        /// <summary>
+        /// Selects the best individual from a random subset of the population.
+        /// </summary>
         private Individual TournamentSelect()
         {
             int n = Mathf.Clamp(TournamentSize, 2, _population.Count);
@@ -233,6 +258,9 @@ namespace Antymology.Agents
             return best;
         }
 
+        /// <summary>
+        /// Creates a child genome by picking genes randomly from parent A or B (50/50).
+        /// </summary>
         private float[] UniformCrossover(float[] a, float[] b)
         {
             float[] c = new float[a.Length];
@@ -243,6 +271,9 @@ namespace Antymology.Agents
             return c;
         }
 
+        /// <summary>
+        /// Applies Gaussian noise to genes based on MutationRate.
+        /// </summary>
         private void MutateInPlace(float[] g)
         {
             for (int i = 0; i < g.Length; i++)
@@ -255,7 +286,9 @@ namespace Antymology.Agents
             }
         }
 
-        // Box-Muller
+        /// <summary>
+        /// Generates a number from a normal distribution using the Box-Muller transform.
+        /// </summary>
         private float NextGaussian(float mean, float stdDev)
         {
             float u1 = Mathf.Clamp01(UnityEngine.Random.value);
@@ -266,6 +299,10 @@ namespace Antymology.Agents
 
         // ------------------- Episode lifecycle -------------------
 
+        /// <summary>
+        /// Prepares the simulation for the current individual in the list.
+        /// Sets a deterministic RNG seed so the same genome produces the same result on replay.
+        /// </summary>
         private void BeginEpisodeForCurrentIndividual()
         {
             _currentTick = 0;
@@ -288,6 +325,9 @@ namespace Antymology.Agents
             Debug.Log($"Episode: GAgen={_gaGeneration} genome={_currentIndividualIndex + 1}/{_population.Count} repeat={_currentEpisodeRepeat + 1}/{EpisodesPerGenome} seed={seed}");
         }
 
+        /// <summary>
+        /// Cleans up old agents and instantiates the new population.
+        /// </summary>
         private void SpawnEpisode(float[] genome)
         {
             foreach (var ant in _ants) if (ant != null) Destroy(ant.gameObject);
@@ -313,21 +353,28 @@ namespace Antymology.Agents
             }
         }
 
+        /// <summary>
+        /// Concludes the current episode, calculates fitness, and advances the GA state machine.
+        /// </summary>
         private void EndEpisode()
         {
-            float queenServivePerpercentage = _queenServivedTicks / MaxTicksPerGeneration;
-            float fitness = (_nestsBuiltThisEpisode * 1f) + ((PopulationSize - _workerDeathCount)*50f) + (_queenHealed * 100f) ;
-            Debug.Log($"Fitness:{fitness} || nestsBuilt: {_nestsBuiltThisEpisode * 1f} workerAlive: {(PopulationSize - _workerDeathCount)*50f} workerHeal: {_queenHealed * 100f}");
+            // Calculate Fitness
+            float workerServivePerpercentage = _workerDeathCount / PopulationSize;
+            // Weighted fitness formula: Nests > Survival > Healing
+            float fitness = (_nestsBuiltThisEpisode * 100f) + (_queenAlive ? 500f : 0f) + (workerServivePerpercentage*1000f) + (_queenHealed * 100f) ;
+            Debug.Log($"Fitness:{fitness} || Nests Built: {_nestsBuiltThisEpisode * 1f} Queen Alive: {(_queenAlive ? 500f : 0f)} Worker Alive: {PopulationSize - _workerDeathCount} Worker Healed: {_queenHealed * 100f}");
 
+            // Record stats
             var ind = _population[_currentIndividualIndex];
             ind.fitnessSum += fitness;
             ind.fitnessSamples++;
 
+            // Cleanup
             foreach (var ant in _ants) if (ant != null) Destroy(ant.gameObject);
             _ants.Clear();
             if (PheromoneField.Instance != null) PheromoneField.Instance.ClearAll();
-            // ClearPheromone();
 
+            // Advance GA State
             _currentEpisodeRepeat++;
             if (_currentEpisodeRepeat >= EpisodesPerGenome)
             {

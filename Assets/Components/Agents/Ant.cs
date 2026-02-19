@@ -4,6 +4,11 @@ using UnityEngine;
 
 namespace Antymology.Agents
 {
+    /// <summary>
+    /// Represents an individual agent (Ant) in the simulation.
+    /// Handles decision making based on genetic data, sensory inputs (pheromones, terrain), 
+    /// and performs actions such as moving, eating, building, and pheromone deposition.
+    /// </summary>
     public class Ant : MonoBehaviour
     {
         #region Configuration
@@ -13,41 +18,69 @@ namespace Antymology.Agents
         private const float HEAL_AMOUNT = 30f;
         private const float BUILD_COST = 30f;
 
-        // Pheromones
+        // Pheromone Type IDs
         private const byte PHEROMONE_QUEEN  = 2;
         private const byte PHEROMONE_FOOD   = 3;
         private const byte PHEROMONE_DANGER = 4;
+        private const byte PHEROMONE_WORKER = 5;
 
         #endregion
 
         #region Genome layout (must match SimulationManager.GenomeLength)
+        /// <summary>Number of genome inputs used for decision making.</summary>
         private const int INPUTS = 9;
 
+        // --- Worker Gene Offsets ---
+        // Genes 0-35 control the weights for specific desires based on inputs.
         private const int OFF_EAT        = 0;              
         private const int OFF_SEEK_FOOD  = OFF_EAT + INPUTS;    //0-8   
         private const int OFF_SEEK_QUEEN = OFF_SEEK_FOOD + INPUTS; //9-17
         private const int OFF_EXPLORE    = OFF_SEEK_QUEEN + INPUTS;     //18-26
 
+        // Single gene controlling the minimum health required before transferring to queen.
         private const int IDX_TRANSFER_MIN_HEALTH   = OFF_EXPLORE + INPUTS;     //27 -35
-        private const int IDX_QUEEN_TARGET_HEALTH   = IDX_TRANSFER_MIN_HEALTH + 1; //36
-        private const int IDX_TRANSFER_AMOUNT       = IDX_TRANSFER_MIN_HEALTH + 2; 
-        private const int IDX_FOOD_DEPOSIT_STRENGTH = IDX_TRANSFER_MIN_HEALTH + 3;
-        private const int IDX_DANGER_DEPOSIT_STRENGTH = IDX_TRANSFER_MIN_HEALTH + 4;
-        private const int IDX_QUEEN_SCENT_STRENGTH  =  IDX_TRANSFER_MIN_HEALTH + 5;
-        private const int IDX_QUEEN_BUILD_THRESHOLD = IDX_TRANSFER_MIN_HEALTH + 6;
-        private const int IDX_QUEEN_BUILD_AGGRESSIVENESS = IDX_TRANSFER_MIN_HEALTH + 7;
+
+        // --- Queen Gene Offsets ---
+        // Genes 37-80 control queen behavior weights.
+        private const int OFF_EAT_QUEEN = IDX_TRANSFER_MIN_HEALTH + INPUTS; // 36 - 44
+        private const int OFF_SEEK_FOOD_QUEEN   = OFF_EAT_QUEEN + INPUTS; // 45 - 53
+        private const int OFF_SEEK_WORKER_QUEEN = OFF_SEEK_FOOD_QUEEN + INPUTS; // 54 - 62
+        private const int OFF_EXPLORE_QUEEN = OFF_SEEK_WORKER_QUEEN + INPUTS; // 63 - 71
+        private const int OFF_BUILD_QUEEN   = OFF_EXPLORE_QUEEN + INPUTS; // 72 - 80
+
+        // --- Physical/Parameter Genes ---
+        // Genes controlling specific thresholds and strengths.
+        private const int IDX_QUEEN_TARGET_HEALTH   = OFF_BUILD_QUEEN + 1; //81
+        private const int IDX_TRANSFER_AMOUNT       = OFF_BUILD_QUEEN + 2; 
+        private const int IDX_FOOD_DEPOSIT_STRENGTH = OFF_BUILD_QUEEN + 3;
+        private const int IDX_DANGER_DEPOSIT_STRENGTH = OFF_BUILD_QUEEN + 4;
+        private const int IDX_QUEEN_SCENT_STRENGTH  =  OFF_BUILD_QUEEN + 5;
+        private const int IDX_QUEEN_BUILD_THRESHOLD = OFF_BUILD_QUEEN + 6;
+        private const int IDX_QUEEN_BUILD_AGGRESSIVENESS = OFF_BUILD_QUEEN + 7;
         #endregion
 
         #region State
+        /// <summary>Current vitality of the ant. Dies if <= 0.</summary>
         public float CurrentHealth;
+        /// <summary>True if this agent is a Queen, False if it is a Worker.</summary>
         public bool IsQueen;
+        /// <summary>
+        /// The genetic code array. 
+        /// Acts as weights for the neural decision matrix and configuration parameters.
+        /// </summary>
         public float[] Genome;
 
         private Vector3 _currentPos;
         private Vector3 _lastPos;
+        /// <summary>Tracks if the ant has moved at least once to establish a forward vector.</summary>
         private bool _hasLastPos;
         #endregion
 
+        /// <summary>
+        /// Initializes the ant with specific genetic data and role.
+        /// </summary>
+        /// <param name="isQueen">Determines the role and visual color.</param>
+        /// <param name="genome">The float array governing behavior.</param>
         public void Init(bool isQueen, float[] genome)
         {
             CurrentHealth = MAX_HEALTH;
@@ -58,19 +91,30 @@ namespace Antymology.Agents
             _lastPos = _currentPos;
             _hasLastPos = false;
 
-            // Visual distinction
+            // Visual distinction: Red for Queen, Black for Worker
             if (IsQueen) GetComponent<Renderer>().material.color = Color.red;
             else GetComponent<Renderer>().material.color = Color.black;
         }
 
+        /// <summary>
+        /// Called every simulation step. Handles health decay, sensory broadcasting, and decision making.
+        /// </summary>
         public void OnTick()
         {
             if (CurrentHealth <= 0) return;
 
-            // Queen always leaves a trail home (strength is gene-controlled)
-            if (IsQueen) BroadcastQueenScent();
+            // Broadcast Pheromones
+            if (IsQueen)
+            {
+                BroadcastQueenScent();
+            }
+            else
+            {
+                BroadcastWorkerScent();
+            }
+  
 
-            // Workers can feed/transfer health to queen if close
+            // Workers attempt to heal the queen if nearby and conditions are met.
             if (!IsQueen) TryHealQueen();
 
             // Environmental effects & health decay
@@ -80,6 +124,10 @@ namespace Antymology.Agents
             DecideAndAct();
         }
 
+        /// <summary>
+        /// Calculates health loss based on terrain (e.g., Acid) and base metabolic rate.
+        /// Triggers death if health hits zero.
+        /// </summary>
         private void ApplyHealthDecay()
         {
             float decay = BASE_DECAY;
@@ -94,21 +142,25 @@ namespace Antymology.Agents
 
         private void DecideAndAct()
         {
-            if (IsQueen) QueenAct();
+            if (IsQueen) TempQueenAct();
             else WorkerAct();
         }
 
         // -------------------- Worker policy --------------------
 
+        /// <summary>
+        /// Routes behavior logic to the appropriate role handler.
+        /// </summary>
         private void WorkerAct()
         {
-            // Smells (normalized)
+            // --- Gather Sensory Inputs ---
             float queenSmell  = Smell01(PHEROMONE_QUEEN);
             float foodSmell   = Smell01(PHEROMONE_FOOD);
             float dangerSmell = Smell01(PHEROMONE_DANGER);
 
             AbstractBlock under = GetBlockAt(_currentPos + Vector3.down);
 
+            // Construct input vector [0..8]
             float[] inputs = new float[INPUTS]
             {
                 CurrentHealth < 30 ? 1f : 0f,                    // 0 lowHealth
@@ -122,10 +174,11 @@ namespace Antymology.Agents
                 under is AcidicBlock ? 1f : 0f                   // 8 onAcid
             };
 
-            // Deposit pheromones as a *side effect* (gene controlled)
+            // Deposit pheromones
             TryDepositWorkerPheromones(inputs);
 
-            // If genome not present / too short, fallback to your old heuristic
+            // --- Validation / Fallback ---
+            // If genome is invalid or older version, use hardcoded legacy behavior.
             if (Genome == null || Genome.Length <= IDX_QUEEN_BUILD_AGGRESSIVENESS)
             {
                 LegacyWorkerAct(inputs);
@@ -139,6 +192,8 @@ namespace Antymology.Agents
                 return;
             }
 
+            // --- Calculate Desires ---
+            // Dot product of Inputs * Gene Weights for each possible action
             float eatDesire       = Score(OFF_EAT, inputs);
             float seekFoodDesire  = Score(OFF_SEEK_FOOD, inputs);
             float seekQueenDesire = Score(OFF_SEEK_QUEEN, inputs);
@@ -167,7 +222,9 @@ namespace Antymology.Agents
                 TryMoveForward();
             }
         }
-
+        /// <summary>
+        /// Hardcoded behavior used when Genome is missing or corrupted.
+        /// </summary>
         private void LegacyWorkerAct(float[] inputs)
         {
             float moveDesire = inputs[7] + inputs[6];
@@ -181,18 +238,21 @@ namespace Antymology.Agents
             else TryMoveForward();
         }
 
+        /// <summary>
+        /// Deposits Food or Danger pheromones based on current location and genetic strength settings.
+        /// </summary>
         private void TryDepositWorkerPheromones(float[] inputs)
         {
             if (Genome == null || Genome.Length <= IDX_QUEEN_BUILD_AGGRESSIVENESS) return;
 
-            // Decode ranges
+            // Decode strength from genes
             float foodStrength   = DecodeRange(Genome[IDX_FOOD_DEPOSIT_STRENGTH], 0f, 150f);
             float dangerStrength = DecodeRange(Genome[IDX_DANGER_DEPOSIT_STRENGTH], 0f, 200f);
 
-            bool onMulch = inputs[1] > 0.5f;
-            bool onAcid  = inputs[7] > 0.5f;
+            bool onMulch = inputs[2] > 0.5f;
+            bool onAcid  = inputs[8] > 0.5f;
 
-            // Leave food trail mainly when you find food (mulch)
+            // Leave food trail mainly when find food
             if (onMulch && foodStrength > 0.01f)
             {
                 var air = GetAirBlock(_currentPos);
@@ -209,6 +269,81 @@ namespace Antymology.Agents
 
         // -------------------- Queen policy --------------------
 
+        /// <summary>
+        /// Main AI loop for Queens using genetic weights.
+        /// </summary>
+        private void TempQueenAct()
+        {
+            float workerSmell   = Smell01(PHEROMONE_WORKER);
+            float foodSmell     = Smell01(PHEROMONE_FOOD);
+            float dangerSmell   = Smell01(PHEROMONE_DANGER);
+
+            AbstractBlock under = GetBlockAt(_currentPos + Vector3.down);
+
+            float[] inputs = new float[INPUTS]
+            {
+                CurrentHealth < 30 ? 1f : 0f,                    // 0 lowHealth
+                CurrentHealth > 60 ? 1f : 0f,                    // 1 highHealth   
+                under is MulchBlock ? 1f : 0f,                   // 2 onMulch
+                under is ContainerBlock ? 1f : 0f,               // 3 onContainer
+                workerSmell,                                      // 4 workerSmell
+                foodSmell,                                       // 5 foodSmell
+                dangerSmell,                                     // 6 dangerSmell
+                Random.value,                                    // 7 noise
+                under is AcidicBlock ? 1f : 0f                   // 8 onAcid
+            };
+            // Fallback
+            if (Genome == null || Genome.Length <= IDX_QUEEN_BUILD_AGGRESSIVENESS)
+            {
+                QueenAct();
+                if (Genome == null)
+                {
+                    Debug.Log("queen genome not null");
+                    return;
+                }
+                
+                Debug.Log($"queen genome not match {Genome.Length} : {IDX_QUEEN_BUILD_AGGRESSIVENESS}");
+                return;
+            }
+
+            // Calculate Desires
+            float eatDesire         = Score(OFF_EAT_QUEEN, inputs);
+            float seekFoodDesire    = Score(OFF_SEEK_FOOD_QUEEN, inputs);
+            float seekWorkerDesire  = Score(OFF_SEEK_WORKER_QUEEN, inputs);
+            float exploreDesire     = Score(OFF_EXPLORE_QUEEN, inputs);
+            float buildDesire       = Score(OFF_BUILD_QUEEN, inputs);
+
+            float max = Mathf.Max(eatDesire, seekFoodDesire, seekWorkerDesire, exploreDesire, buildDesire);
+
+            if (max == eatDesire)
+            {
+                // Debug.Log("try eat");
+                TryEat();
+            }
+            else if (max == seekFoodDesire)
+            {
+                // Debug.Log("try seekFood");
+                TryMoveTowardsPheromone(PHEROMONE_FOOD, avoidDanger: true);
+            }
+            else if (max == seekWorkerDesire)
+            {
+                // Debug.Log("try seekQueen");
+                TryMoveTowardsPheromone(PHEROMONE_WORKER, avoidDanger: true);
+            }
+            else if (max == buildDesire)
+            {
+                TryBuildNest();
+            }
+            else
+            {
+                // Debug.Log("try Move");
+                TryMoveForward();
+            }
+        }
+        /// <summary>
+        /// Legacy/Hardcoded Queen Logic.
+        /// Used if genome is missing or explicitly requested.
+        /// </summary>
         private void QueenAct()
         {
             bool queenUseGenome = false;
@@ -247,7 +382,9 @@ namespace Antymology.Agents
         }
 
         // -------------------- Actions --------------------
-
+        /// <summary>
+        /// Moves the ant to a random valid adjacent position.
+        /// </summary>
         private void TryMove()
         {
             List<Vector3> validMoves = CheckMoves(2);
@@ -259,7 +396,10 @@ namespace Antymology.Agents
                 _currentPos = chosen;
             }
         }
-
+        /// <summary>
+        /// Attempts to move in a "forward" direction based on previous position to reduce jitter/backtracking.
+        /// Uses weighted probability to prefer forward/side moves over moving directly back.
+        /// </summary>
         private void TryMoveForward()
         {
             if (!_hasLastPos)
@@ -280,7 +420,10 @@ namespace Antymology.Agents
             _currentPos = chosen;
             _lastPos = prev;
         }
-
+        /// <summary>
+        /// Selects a move from the valid list, weighting moves further from _lastPos higher.
+        /// Weights: 50% Best, 35% 2nd Best, 10% 3rd, 5% Backwards/Worst.
+        /// </summary>
         private Vector3 PickForwardMoveWeighted(List<Vector3> validMoves)
         {
             // Find the move that goes back to _lastPos (match by x/z only)
@@ -342,7 +485,9 @@ namespace Antymology.Agents
             float dz = a.z - b.z;
             return dx * dx + dz * dz;
         }
-
+        /// <summary>
+        /// Consumes the block directly underneath to restore health.
+        /// </summary>
         private void TryEat()
         {
             Vector3 targetBlockPos = _currentPos + Vector3.down;
@@ -352,7 +497,9 @@ namespace Antymology.Agents
                 CurrentHealth = Mathf.Min(CurrentHealth + HEAL_AMOUNT, MAX_HEALTH);
             }
         }
-
+        /// <summary>
+        /// Converts the current air block into a NestBlock if resources allow.
+        /// </summary>
         private void TryBuildNest()
         {
             if (!IsQueen || CurrentHealth < BUILD_COST) return;
@@ -380,7 +527,11 @@ namespace Antymology.Agents
                 WorldManager.Instance.SetBlock((int)targetBlockPos.x, (int)targetBlockPos.y, (int)targetBlockPos.z, new AirBlock());
             }
         }
-
+        /// <summary>
+        /// Moves towards the highest concentration of a specific pheromone.
+        /// </summary>
+        /// <param name="type">The pheromone ID to seek.</param>
+        /// <param name="avoidDanger">If true, ignores tiles with high Danger pheromones.</param>
         private void TryMoveTowardsPheromone(byte type, bool avoidDanger = false)
         {
             double bestScent = -1.0;
@@ -420,7 +571,9 @@ namespace Antymology.Agents
                 TryMoveForward();
             }
         }
-
+        /// <summary>
+        /// Handles agent death, reporting statistics to the SimulationManager and destroying the GameObject.
+        /// </summary>
         private void Die()
         {
             if(IsQueen) 
@@ -450,6 +603,19 @@ namespace Antymology.Agents
             current.DepositPheromone(PHEROMONE_QUEEN, strength);
         }
 
+        private void BroadcastWorkerScent()
+        {
+            AirBlock current = GetAirBlock(_currentPos);
+            if (current == null) return;
+
+            double strength = 20.0;
+
+            current.DepositPheromone(PHEROMONE_WORKER, strength);
+        }
+        /// <summary>
+        /// Logic for a worker to transfer health to a nearby Queen.
+        /// Controlled by Genome thresholds (Min Health to give, Target Queen health).
+        /// </summary>
         private void TryHealQueen()
         {
             if (Genome == null || Genome.Length <= IDX_QUEEN_BUILD_AGGRESSIVENESS)
@@ -541,7 +707,12 @@ namespace Antymology.Agents
         {
             return WorldManager.Instance.GetBlock((int)pos.x, (int)pos.y, (int)pos.z);
         }
-
+        
+        /// <summary>
+        /// Returns a list of adjacent positions where the ant can move.
+        /// Checks for valid air blocks and step height limitations.
+        /// </summary>
+        /// <param name="y_target">Max vertical step height allowed.</param>
         private List<Vector3> CheckMoves(int y_target)
         {
             List<Vector3> validMoves = new List<Vector3>();
